@@ -8,8 +8,93 @@
 @model List<Movie>
 
 @{
-    ViewData["Title"] = "Ana Sayfa";
+    ViewData["Title"] = "Filmler";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    
+    // Güvenli tür dönüşümleri (null korumaları)
+    int? selectedGenreId = ViewBag.SelectedGenreId as int?;
+    double? selectedMinRating = ViewBag.SelectedMinRating as double?;
+    int? selectedYear = ViewBag.SelectedYear as int?;
 }
+
+<div class="mb-8 bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+    <h2 class="text-xl font-bold mb-4 text-white flex items-center">
+        <svg class="w-6 h-6 mr-2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>
+        @Localizer["FilterMovies"]
+    </h2>
+    <form action="/Movies" method="get" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+        
+        <!-- Tür Seçimi -->
+        <div>
+            <label for="genreId" class="block text-sm font-medium text-gray-300 mb-1">@Localizer["Genre"]</label>
+            <select id="genreId" name="genreId" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500">
+                <option value="">@Localizer["All"]</option>
+                @if (ViewBag.Genres != null)
+                {
+                    foreach (var genre in ViewBag.Genres)
+                    {
+                        if (selectedGenreId == genre.Id)
+                        {
+                            <option value="@genre.Id" selected>@genre.Name</option>
+                        }
+                        else
+                        {
+                            <option value="@genre.Id">@genre.Name</option>
+                        }
+                    }
+                }
+            </select>
+        </div>
+
+        <!-- Minimum Puan -->
+        <div>
+            <label for="minRating" class="block text-sm font-medium text-gray-300 mb-1">@Localizer["MinRating"]</label>
+            <select id="minRating" name="minRating" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500">
+                <option value="">@Localizer["All"]</option>
+                @foreach (var val in new[] { 9, 8, 7, 6, 5 })
+                {
+                    if (selectedMinRating == val)
+                    {
+                        <option value="@val" selected>@val.ToString("+")</option>
+                    }
+                    else
+                    {
+                        <option value="@val">@val.ToString("+")</option>
+                    }
+                }
+            </select>
+        </div>
+
+        <!-- Çıkış Yılı -->
+        <div>
+            <label for="year" class="block text-sm font-medium text-gray-300 mb-1">@Localizer["ReleaseYear"]</label>
+            <select id="year" name="year" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500">
+                <option value="">@Localizer["All"]</option>
+                @foreach (var val in new[] { 2024, 2020, 2010, 2000 })
+                {
+                    if (selectedYear == val)
+                    {
+                        <option value="@val" selected>@val @Localizer["AndLater"]</option>
+                    }
+                    else
+                    {
+                        <option value="@val">@val @Localizer["AndLater"]</option>
+                    }
+                }
+            </select>
+        </div>
+
+        <!-- Butonlar -->
+        <div class="flex space-x-2">
+            <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+                @Localizer["Apply"]
+            </button>
+            <a href="/Movies" class="bg-gray-600 hover:bg-gray-500 text-white font-medium py-2 px-4 rounded-lg transition duration-200 text-center flex items-center justify-center" title="@Localizer["ClearFilters"]">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </a>
+        </div>
+    </form>
+</div>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
     @foreach (var movie in Model)
@@ -17,7 +102,7 @@
     {
         <div class="bg-gray-800 rounded-lg overflow-hidden shadow-lg transform transition hover:scale-105">
             <a href="/Movies/Details/@movie.Id">
-                <img src="@(string.IsNullOrEmpty(movie.PosterPath) ? "/images/placeholder.jpg" : $"https://image.tmdb.org/t/p/w500{movie.PosterPath}")"
+                <img src="@(string.IsNullOrEmpty(movie.PosterPath) ? "/images/placeholder.jpg" : (movie.PosterPath.StartsWith("http") ? movie.PosterPath : $"https://image.tmdb.org/t/p/w500{movie.PosterPath}"))"
                      alt="@movie.Title"
                      class="w-full h-96 object-cover">
                 <div class="p-4">

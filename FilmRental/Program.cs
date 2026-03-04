@@ -1,12 +1,23 @@
 using Microsoft.EntityFrameworkCore;
-// TODO: Context hangi namespace'deyse bunu düzelt:
-// örn: using DataAccessLayer.Concrete;  veya using EntityLayer.Concrete;
+// TODO: Context hangi namespace'deyse bunu dÃ¼zelt:
+// Ã–rn: using DataAccessLayer.Concrete;  veya using EntityLayer.Concrete;
 using DataAccessLayer.Concrete;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllersWithViews();
+builder.Services.AddLocalization(options => options.ResourcesPath = "Resources");
+
+builder.Services.AddControllersWithViews()
+    .AddViewLocalization(Microsoft.AspNetCore.Mvc.Razor.LanguageViewLocationExpanderFormat.Suffix);
+
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    var supportedCultures = new[] { "tr-TR", "en-US", "de-DE" };
+    options.SetDefaultCulture("tr-TR")
+           .AddSupportedCultures(supportedCultures)
+           .AddSupportedUICultures(supportedCultures);
+});
 
 // ? DbContext (SQL Server)
 builder.Services.AddDbContext<Context>(options =>
@@ -24,6 +35,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Seed VeritabanÄ±
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    DbInitializer.Initialize(services);
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -47,6 +65,9 @@ app.UseStaticFiles(new StaticFileOptions
 
 // Use CORS before routing
 app.UseCors("AllowN8n");
+
+// Enable Localization Middleware
+app.UseRequestLocalization();
 
 app.UseRouting();
 

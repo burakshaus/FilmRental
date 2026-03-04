@@ -18,7 +18,7 @@
             <div class="bg-white rounded-lg overflow-hidden shadow-lg">
                 @if (!string.IsNullOrEmpty(Model.PosterPath))
                 {
-                    <img src="https://image.tmdb.org/t/p/w500@(Model.PosterPath)"
+                    <img src="@(Model.PosterPath.StartsWith("http") ? Model.PosterPath : $"https://image.tmdb.org/t/p/w500{Model.PosterPath}")"
                          alt="@Model.Title"
                          class="w-full h-auto">
                 }

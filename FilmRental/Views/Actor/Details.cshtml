@@ -46,7 +46,7 @@
                             <div class="w-24 h-36">
                                 @if (!string.IsNullOrEmpty(movieActor.Movie?.PosterPath))
                                 {
-                                    <img src="https://image.tmdb.org/t/p/w200@(movieActor.Movie.PosterPath)"
+                                    <img src="@(movieActor.Movie.PosterPath.StartsWith("http") ? movieActor.Movie.PosterPath : $"https://image.tmdb.org/t/p/w200{movieActor.Movie.PosterPath}")"
                                          alt="@movieActor.Movie.Title"
                                          class="w-full h-full object-cover rounded">
                                 }

@@ -12,7 +12,7 @@ namespace EntityLayer.Concrete
         [Key]
         public int Id { get; set; }  // ActorId yerine Id kullanıyoruz
         public string Name { get; set; }
-        public string PhotoUrl { get; set; }
+        public string? PhotoUrl { get; set; }
         public ICollection<MovieActor> MovieActors { get; set; }
     }
 }

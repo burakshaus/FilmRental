@@ -26,7 +26,7 @@
                 <a href="/Movies/Details/@item.Id">
                     @if (!string.IsNullOrEmpty(item.PosterPath))
                     {
-                        <img src="https://image.tmdb.org/t/p/w500@(item.PosterPath)"
+                        <img src="@(item.PosterPath.StartsWith("http") ? item.PosterPath : $"https://image.tmdb.org/t/p/w500{item.PosterPath}")"
                              alt="@item.Title"
                              class="w-full h-96 object-cover">
                     }
