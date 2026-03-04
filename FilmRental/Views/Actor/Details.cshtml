@@ -1,0 +1,87 @@
+﻿
+@{
+    ViewData["Title"] = "Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- Views/Actor/Details.cshtml -->
+@model EntityLayer.Concrete.Actor
+@{
+    ViewData["Title"] = Model.Name;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex flex-col md:flex-row gap-8">
+        <!-- Aktör Bilgileri -->
+        <div class="md:w-1/3">
+            <div class="bg-white rounded-lg overflow-hidden shadow-lg">
+                @if (!string.IsNullOrEmpty(Model.PhotoUrl))
+                {
+                    <img src="@Model.PhotoUrl"
+                         alt="@Model.Name"
+                         class="w-full h-auto">
+                }
+                else
+                {
+                    <div class="w-full h-96 bg-gray-200 flex items-center justify-center">
+                        <span class="text-gray-400">Fotoğraf Yok</span>
+                    </div>
+                }
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-4">@Model.Name</h1>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filmografi -->
+        <div class="md:w-2/3">
+            <h2 class="text-2xl font-bold mb-6">Filmografi</h2>
+            <div class="space-y-4">
+                @if (Model.MovieActors != null && Model.MovieActors.Any())
+                {
+                    foreach (var movieActor in Model.MovieActors.OrderByDescending(ma => ma.Movie?.ReleaseDate))
+                    {
+                        <div class="bg-white rounded-lg shadow p-4 flex items-center gap-4">
+                            <div class="w-24 h-36">
+                                @if (!string.IsNullOrEmpty(movieActor.Movie?.PosterPath))
+                                {
+                                    <img src="https://image.tmdb.org/t/p/w200@(movieActor.Movie.PosterPath)"
+                                         alt="@movieActor.Movie.Title"
+                                         class="w-full h-full object-cover rounded">
+                                }
+                                else
+                                {
+                                    <div class="w-full h-full bg-gray-200 rounded flex items-center justify-center">
+                                        <span class="text-gray-400 text-sm">Poster Yok</span>
+                                    </div>
+                                }
+                            </div>
+                            <div class="flex-1">
+                                <a href="/Movies/Details/@movieActor.Movie?.Id"
+                                   class="text-xl font-semibold text-blue-600 hover:text-blue-800">
+                                    @movieActor.Movie?.Title
+                                </a>
+                                <p class="text-gray-600 mt-1">
+                                    Rol: @(string.IsNullOrEmpty(movieActor.Role) ? "Belirtilmemiş" : movieActor.Role)
+                                </p>
+                                @if (movieActor.Movie?.ReleaseDate != null)
+                                {
+                                    <p class="text-gray-500 text-sm mt-1">
+                                        @movieActor.Movie.ReleaseDate.Value.Year
+                                    </p>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="bg-gray-50 rounded-lg p-8 text-center">
+                        <p class="text-gray-600">Bu aktörün henüz bir filmi bulunmuyor.</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

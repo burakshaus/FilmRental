@@ -1,0 +1,139 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Film Sitesi</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@@n8n/chat/dist/style.css" rel="stylesheet">
+    <style>
+        #n8n-chat {
+            position: fixed !important;
+            bottom: 20px !important;
+            right: 20px !important;
+            z-index: 9999 !important;
+        }
+
+        .n8n-chat-bubble {
+            background-color: #4f46e5 !important;
+            border-radius: 50% !important;
+            width: 60px !important;
+            height: 60px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            cursor: pointer !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        .n8n-chat-window {
+            width: 380px !important;
+            height: 600px !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1) !important;
+            background-color: white !important;
+            color: black !important;
+        }
+
+        .n8n-chat-header {
+            background-color: #4f46e5 !important;
+            color: white !important;
+            padding: 16px !important;
+            border-top-left-radius: 12px !important;
+            border-top-right-radius: 12px !important;
+        }
+
+        .n8n-chat-messages {
+            padding: 16px !important;
+            height: calc(100% - 120px) !important;
+            overflow-y: auto !important;
+        }
+
+        .n8n-chat-input {
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+            margin: 16px !important;
+            width: calc(100% - 32px) !important;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <nav class="bg-gray-800 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/" class="text-xl font-bold">Film Sitesi</a>
+                    <div class="hidden md:block ml-10">
+                        <div class="flex items-baseline space-x-3">
+                            <a href="/Movies" class="text-gray-300 hover:text-white px-3 py-2 rounded-md">Filmler</a>
+                            <a href="/Genre" class="text-gray-300 hover:text-white px-3 py-2 rounded-md">Türler</a>
+                            <a href="/Actor" class="text-gray-300 hover:text-white px-3 py-2 rounded-md">Aktörler</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container mx-auto px-4 py-8">
+        @RenderBody()
+    </main>
+
+    <div id="n8n-chat"></div>
+
+    <footer class="bg-gray-800 text-gray-400 py-8">
+        <div class="container mx-auto px-4">
+            <p class="text-center">&copy; 2024 Film Sitesi. Tüm hakları saklıdır.</p>
+        </div>
+    </footer>
+
+    <script type="module">
+        import { createChat } from 'https://cdn.jsdelivr.net/npm/@@n8n/chat/dist/chat.bundle.es.js';
+        createChat({
+            webhookUrl: 'https://geroto.app.n8n.cloud/webhook/e869fc5d-381d-447f-9be6-87b4b2286aeb/chat',
+            target: "#n8n-chat",
+            mode: "window",
+            defaultOpen: false,
+            showInitialMessage: true,
+            initialMessages: ["Merhaba! Size nasıl yardımcı olabilirim?"],
+            i18n: {
+                en: {
+                    title: "Film Sitesi Yardımcısı",
+                    subtitle: "Size nasıl yardımcı olabilirim?",
+                    inputPlaceholder: "Lütfen sorunuzu yazın...",
+                    footer: "",
+                    getStarted: "Yeni sohbet başlat",
+                    closeButtonTooltip: "Sohbeti kapat"
+                }
+            },
+            theme: {
+                button: {
+                    backgroundColor: '#4f46e5',
+                    color: 'white',
+                },
+                chat: {
+                    backgroundColor: 'white',
+                    textColor: 'black',
+                    fontSize: '14px',
+                    fontFamily: 'Roboto, sans-serif',
+                    height: '600px',
+                    width: '380px'
+                },
+                messages: {
+                    botMessage: {
+                        backgroundColor: '#f3f4f6',
+                        textColor: 'black'
+                    },
+                    userMessage: {
+                        backgroundColor: '#4f46e5',
+                        textColor: 'white'
+                    }
+                }
+            }
+        });
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
