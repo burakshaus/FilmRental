@@ -249,6 +249,23 @@ namespace FilmRental.Controllers
             return Ok(new { message = $"Embedding işlemi tamamlandı. Başarılı: {processed}, Hatalı: {failed}" });
         }
 
+        [HttpPost("RandomizeStock")]
+        public async Task<IActionResult> RandomizeStock()
+        {
+            var movies = await _context.Movies.ToListAsync();
+            var random = new Random();
+            int updatedCount = 0;
+
+            foreach (var movie in movies)
+            {
+                movie.TotalCopies = random.Next(1, 11); // Random text between 1 and 10
+                updatedCount++;
+            }
+
+            await _context.SaveChangesAsync();
+            return Ok(new { message = $"{updatedCount} filmin stok miktarı 1 ile 10 arasında rastgele sayılarla güncellendi." });
+        }
+
         private async Task<float[]?> GetEmbeddingAsync(string apiKey, string text)
         {
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
