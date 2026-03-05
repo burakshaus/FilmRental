@@ -1,7 +1,9 @@
 using DataAccessLayer.Concrete;
 using EntityLayer.Concrete;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+
 
 namespace FilmRental.Controllers
 {
@@ -187,6 +189,93 @@ namespace FilmRental.Controllers
 
                 count++;
             }
+        }
+
+        /// <summary>
+        /// Tüm filmler için Gemini text-embedding-004 vektörü oluşturur ve DB'ye kaydeder.
+        /// Bu endpoint yalnızca bir kez çalıştırılmalıdır.
+        /// GET /api/Seed/GenerateEmbeddings
+        /// </summary>
+        [HttpGet("GenerateEmbeddings")]
+        public async Task<IActionResult> GenerateEmbeddings()
+        {
+            var geminiKey = _configuration["Gemini:ApiKey"];
+            if (string.IsNullOrEmpty(geminiKey))
+                return BadRequest("Gemini API Key eksik.");
+
+            var movies = _context.Movies
+                .Where(m => m.EmbeddingJson == null)
+                .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
+                .Include(m => m.MovieActors).ThenInclude(ma => ma.Actor)
+                .ToList();
+
+            if (!movies.Any())
+                return Ok(new { message = "Tüm filmlerin zaten embedding'i var." });
+
+            int processed = 0;
+            int failed = 0;
+
+            foreach (var movie in movies)
+            {
+                try
+                {
+                    var genres = string.Join(", ", movie.MovieGenres.Select(mg => mg.Genre.Name));
+                    var actors = string.Join(", ", movie.MovieActors.Take(5).Select(ma => ma.Actor.Name));
+                    var text = $"{movie.Title}. {movie.Overview}. Türler: {genres}. Oyuncular: {actors}";
+
+                    var embedding = await GetEmbeddingAsync(geminiKey, text);
+                    if (embedding != null)
+                    {
+                        movie.EmbeddingJson = System.Text.Json.JsonSerializer.Serialize(embedding);
+                        await _context.SaveChangesAsync();
+                        processed++;
+                    }
+                    else
+                    {
+                        failed++;
+                    }
+
+                    // API rate limit için bekleme
+                    await Task.Delay(500);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Embedding hatası ({movie.Title}): {ex.Message}");
+                    failed++;
+                    await Task.Delay(1000);
+                }
+            }
+
+            return Ok(new { message = $"Embedding işlemi tamamlandı. Başarılı: {processed}, Hatalı: {failed}" });
+        }
+
+        private async Task<float[]?> GetEmbeddingAsync(string apiKey, string text)
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
+            var body = new
+            {
+                model = "models/gemini-embedding-001",
+                content = new { parts = new[] { new { text } } }
+            };
+
+            var content = new System.Net.Http.StringContent(
+                System.Text.Json.JsonSerializer.Serialize(body),
+                System.Text.Encoding.UTF8,
+                "application/json");
+
+            var response = await _httpClient.PostAsync(url, content);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+
+            if (doc.RootElement.TryGetProperty("embedding", out var embEl) &&
+                embEl.TryGetProperty("values", out var values))
+            {
+                return values.EnumerateArray().Select(v => (float)v.GetDouble()).ToArray();
+            }
+
+            return null;
         }
     }
 }

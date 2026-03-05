@@ -19,4 +19,5 @@
   <data name="SearchResults" xml:space="preserve"><value>Arama Sonuçları</value></data>
   <data name="FoundParam" xml:space="preserve"><value>{0} için {1} film bulundu.</value></data>
   <data name="ClearFilters" xml:space="preserve"><value>Filtreleri Temizle</value></data>
+  <data name="Rentals" xml:space="preserve"><value>Kiralamalar</value></data>
 </root>

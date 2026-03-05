@@ -1,5 +1,7 @@
+using DataAccessLayer.Concrete;
 using FilmRental.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Text.Json;
 
@@ -10,11 +12,13 @@ namespace FilmRental.Controllers
     public class AiChatController : ControllerBase
     {
         private readonly IConfiguration _configuration;
+        private readonly Context _context;
         private readonly HttpClient _httpClient;
 
-        public AiChatController(IConfiguration configuration)
+        public AiChatController(IConfiguration configuration, Context context)
         {
             _configuration = configuration;
+            _context = context;
             _httpClient = new HttpClient();
         }
 
@@ -22,30 +26,26 @@ namespace FilmRental.Controllers
         public async Task<IActionResult> PostMessage([FromBody] ChatRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Message))
-            {
                 return BadRequest("Mesaj boş olamaz.");
-            }
 
             var apiKey = _configuration["Gemini:ApiKey"];
             if (string.IsNullOrEmpty(apiKey))
-            {
-                return StatusCode(500, "Gemini API Key bulunamadı. Lütfen appsettings.json dosyasını kontrol edin.");
-            }
+                return StatusCode(500, "Gemini API Key bulunamadı.");
 
+            // ── RAG Step 1: Retrieve relevant movies via semantic search ──
+            var movieContext = await RetrieveSemanticMoviesAsync(apiKey, request.Message);
+
+            // ── RAG Step 2: Build augmented prompt ──
+            var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
+
+            // ── RAG Step 3: Send to Gemini Chat ──
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
 
-            // Gemini API JSON format
             var requestBody = new
             {
                 contents = new[]
                 {
-                    new
-                    {
-                        parts = new[]
-                        {
-                            new { text = $"Sen bir film sitesi asistanısın. Kısa, yardımcı ve arkadaş canlısı cevaplar ver. Kullanıcının mesajı: {request.Message}" }
-                        }
-                    }
+                    new { parts = new[] { new { text = systemPrompt } } }
                 }
             };
 
@@ -57,14 +57,11 @@ namespace FilmRental.Controllers
                 var responseString = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
-                {
                     return StatusCode((int)response.StatusCode, $"API Hatası: {responseString}");
-                }
 
                 using var jsonDoc = JsonDocument.Parse(responseString);
                 var root = jsonDoc.RootElement;
-                
-                // Gemini API structure parse
+
                 if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
                 {
                     var text = candidates[0]
@@ -82,5 +79,186 @@ namespace FilmRental.Controllers
                 return StatusCode(500, $"Sunucu hatası: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Semantic retrieval: gets query embedding and finds top-N movies by cosine similarity.
+        /// Falls back to keyword matching if no embeddings exist yet.
+        /// </summary>
+        private async Task<List<MovieContextItem>> RetrieveSemanticMoviesAsync(string apiKey, string query)
+        {
+            var queryEmbedding = await GetEmbeddingAsync(apiKey, query);
+
+            var allMovies = await _context.Movies
+                .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
+                .Include(m => m.MovieActors).ThenInclude(ma => ma.Actor)
+                .ToListAsync();
+
+            // ── Stock filter: exclude movies with no available copies ──
+            var activeRentalCounts = await _context.Rentals
+                .Where(r => r.ReturnedAt == null)
+                .GroupBy(r => r.MovieId)
+                .Select(g => new { MovieId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.MovieId, x => x.Count);
+
+            var availableMovies = allMovies
+                .Where(m =>
+                {
+                    var rented = activeRentalCounts.GetValueOrDefault(m.Id, 0);
+                    return m.TotalCopies - rented > 0;
+                })
+                .ToList();
+
+            if (!availableMovies.Any())
+                availableMovies = allMovies; // fallback: show all if everything is rented
+
+            // If embeddings exist, use cosine similarity on available movies only
+            var withEmbeddings = availableMovies.Where(m => m.EmbeddingJson != null).ToList();
+            if (queryEmbedding != null && withEmbeddings.Count > 5)
+            {
+                return withEmbeddings
+                    .Select(m =>
+                    {
+                        var vec = JsonSerializer.Deserialize<float[]>(m.EmbeddingJson!)!;
+                        return new { Movie = m, Score = CosineSimilarity(queryEmbedding, vec) };
+                    })
+                    .OrderByDescending(x => x.Score)
+                    .Take(8)
+                    .Select(x =>
+                    {
+                        var available = x.Movie.TotalCopies - activeRentalCounts.GetValueOrDefault(x.Movie.Id, 0);
+                        return ToContextItem(x.Movie, available);
+                    })
+                    .ToList();
+            }
+
+            // Fallback: keyword matching
+            var keywords = query.ToLower()
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => w.Length >= 3).ToList();
+
+            var keywordScored = availableMovies
+                .Select(m =>
+                {
+                    var text = $"{m.Title} {m.Overview} {string.Join(" ", m.MovieGenres.Select(mg => mg.Genre.Name))}".ToLower();
+                    var score = keywords.Sum(kw => text.Contains(kw) ? 1 : 0) + (m.ImdbRating ?? 0) / 10.0;
+                    return new { Movie = m, Score = score };
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .Take(8)
+                .Select(x =>
+                {
+                    var available = x.Movie.TotalCopies - activeRentalCounts.GetValueOrDefault(x.Movie.Id, 0);
+                    return ToContextItem(x.Movie, available);
+                })
+                .ToList();
+
+            if (keywordScored.Any()) return keywordScored;
+
+            return availableMovies
+                .OrderByDescending(m => m.ImdbRating)
+                .Take(8)
+                .Select(m =>
+                {
+                    var available = m.TotalCopies - activeRentalCounts.GetValueOrDefault(m.Id, 0);
+                    return ToContextItem(m, available);
+                })
+                .ToList();
+        }
+
+        /// <summary>
+        /// Calls Gemini text-embedding-004 to get a 768-dim vector for any text.
+        /// </summary>
+        private async Task<float[]?> GetEmbeddingAsync(string apiKey, string text)
+        {
+            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
+            var body = new
+            {
+                model = "models/gemini-embedding-001",
+                content = new { parts = new[] { new { text } } }
+            };
+
+            var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+            var response = await _httpClient.PostAsync(url, content);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+
+            if (doc.RootElement.TryGetProperty("embedding", out var embEl) &&
+                embEl.TryGetProperty("values", out var values))
+            {
+                return values.EnumerateArray().Select(v => (float)v.GetDouble()).ToArray();
+            }
+
+            return null;
+        }
+
+        /// <summary>Calculates cosine similarity between two float vectors.</summary>
+        private static double CosineSimilarity(float[] a, float[] b)
+        {
+            if (a.Length != b.Length) return 0;
+            double dot = 0, normA = 0, normB = 0;
+            for (int i = 0; i < a.Length; i++)
+            {
+                dot += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+            }
+            if (normA == 0 || normB == 0) return 0;
+            return dot / (Math.Sqrt(normA) * Math.Sqrt(normB));
+        }
+
+        private static MovieContextItem ToContextItem(EntityLayer.Concrete.Movie m, int availableCopies = -1) => new()
+        {
+            Title = m.Title,
+            Overview = m.Overview ?? "Bilgi yok",
+            Year = m.ReleaseDate.HasValue ? m.ReleaseDate.Value.Year : 0,
+            Rating = m.ImdbRating ?? 0,
+            Genres = m.MovieGenres.Select(mg => mg.Genre.Name).ToList(),
+            Actors = m.MovieActors.Take(3).Select(ma => ma.Actor.Name).ToList(),
+            AvailableCopies = availableCopies
+        };
+
+        /// <summary>Builds the full augmented RAG prompt with database context.</summary>
+        private static string BuildAugmentedPrompt(string userQuery, List<MovieContextItem> movies)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Sen bir DVD kiralama mağazasının yapay zeka asistanısın.");
+            sb.AppendLine("Görevin: Aşağıdaki VERİTABANINDAN çekilen film listesine dayanarak kullanıcının sorusunu yanıtlamak.");
+            sb.AppendLine();
+            sb.AppendLine("KURALLAR:");
+            sb.AppendLine("1. Yalnızca aşağıdaki veritabanı filmlerinden öneri yap.");
+            sb.AppendLine("2. Her öneride neden o filmi seçtiğini kısa bir cümleyle açıkla.");
+            sb.AppendLine("3. Cevabını emoji'lerle güzelleştir, kısa ve anlaşılır tut.");
+            sb.AppendLine("4. Veritabanında uygun film yoksa bunu dürüstçe belirt.");
+            sb.AppendLine();
+            sb.AppendLine("── VERİTABANINDAKİ İLGİLİ FİLMLER ──");
+
+            for (int i = 0; i < movies.Count; i++)
+            {
+                var m = movies[i];
+                var stockInfo = m.AvailableCopies >= 0 ? $" | Stok: {m.AvailableCopies} kopya" : "";
+                sb.AppendLine($"{i + 1}. {m.Title} ({m.Year}) | IMDb: {m.Rating:0.0} | Tür: {string.Join(", ", m.Genres)}{stockInfo}");
+                sb.AppendLine($"   Oyuncular: {string.Join(", ", m.Actors)}");
+                sb.AppendLine($"   Özet: {(m.Overview.Length > 200 ? m.Overview[..200] + "..." : m.Overview)}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("── KULLANICI SORUSU ──");
+            sb.AppendLine(userQuery);
+            return sb.ToString();
+        }
+    }
+
+    public class MovieContextItem
+    {
+        public string Title { get; set; } = "";
+        public string Overview { get; set; } = "";
+        public int Year { get; set; }
+        public double Rating { get; set; }
+        public List<string> Genres { get; set; } = new();
+        public List<string> Actors { get; set; } = new();
+        public int AvailableCopies { get; set; } = -1;
     }
 }
