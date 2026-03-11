@@ -28,56 +28,63 @@ namespace FilmRental.Controllers
             if (string.IsNullOrWhiteSpace(request.Message))
                 return BadRequest("Mesaj boş olamaz.");
 
-            var apiKey = _configuration["Gemini:ApiKey"];
-            if (string.IsNullOrEmpty(apiKey))
-                return StatusCode(500, "Gemini API Key bulunamadı.");
+            var geminiApiKey = _configuration["Gemini:ApiKey"];
+            var groqApiKey = _configuration["Groq:ApiKey"];
+            if (string.IsNullOrEmpty(groqApiKey))
+                return StatusCode(500, "Groq API Key bulunamadı.");
 
             // ── RAG Step 1: Retrieve relevant movies via semantic search ──
-            var movieContext = await RetrieveSemanticMoviesAsync(apiKey, request.Message);
+            var movieContext = await RetrieveSemanticMoviesAsync(geminiApiKey, request.Message);
 
             // ── RAG Step 2: Build augmented prompt ──
             var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
 
-            // ── RAG Step 3: Send to Gemini Chat ──
-            string url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={apiKey}";
-
-            var requestBody = new
-            {
-                contents = new[]
-                {
-                    new { parts = new[] { new { text = systemPrompt } } }
-                }
-            };
-
-            var jsonContent = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
-
+            // ── RAG Step 3: Send to Groq ──
             try
             {
-                var response = await _httpClient.PostAsync(url, jsonContent);
-                var responseString = await response.Content.ReadAsStringAsync();
-
-                if (!response.IsSuccessStatusCode)
-                    return StatusCode((int)response.StatusCode, $"API Hatası: {responseString}");
-
-                using var jsonDoc = JsonDocument.Parse(responseString);
-                var root = jsonDoc.RootElement;
-
-                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
-                {
-                    var text = candidates[0]
-                                .GetProperty("content")
-                                .GetProperty("parts")[0]
-                                .GetProperty("text").GetString();
-
-                    return Ok(new { reply = text });
-                }
-
-                return StatusCode(500, "Gemini API yanıtı beklenmeyen bir formattaydı.");
+                var reply = await GetGroqResponseAsync(groqApiKey, systemPrompt);
+                return Ok(new { reply });
             }
             catch (Exception ex)
             {
                 return StatusCode(500, $"Sunucu hatası: {ex.Message}");
             }
+        }
+
+        private async Task<string> GetGroqResponseAsync(string apiKey, string prompt)
+        {
+            var requestBody = new
+            {
+                model = "llama-3.3-70b-versatile",
+                max_tokens = 1024,
+                messages = new[]
+                {
+                    new { role = "user", content = prompt }
+                }
+            };
+
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+            requestMessage.Headers.Add("Authorization", $"Bearer {apiKey}");
+            requestMessage.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.SendAsync(requestMessage);
+            var responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Groq API Hatası: {responseString}");
+
+            using var jsonDoc = JsonDocument.Parse(responseString);
+            var root = jsonDoc.RootElement;
+
+            if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+            {
+                return choices[0]
+                    .GetProperty("message")
+                    .GetProperty("content")
+                    .GetString() ?? "";
+            }
+
+            throw new Exception("Groq API yanıtı beklenmeyen bir formattaydı.");
         }
 
         /// <summary>
