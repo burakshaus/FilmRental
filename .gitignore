@@ -272,6 +272,10 @@ ServiceFabricBackup/
 *.ldf
 *.ndf
 
+# Allow Database folder for sharing
+!Database/*.mdf
+!Database/*.ldf
+
 # Business Intelligence projects
 *.rdl.data
 *.bim.layout
