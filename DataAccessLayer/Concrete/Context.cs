@@ -62,5 +62,6 @@ namespace DataAccessLayer.Concrete
         public DbSet<MovieGenre> MovieGenres { get; set; }
         public DbSet<Review> Reviews { get; set; }
         public DbSet<WatchList> WatchLists { get; set; }
+        public DbSet<Rental> Rentals { get; set; }
     }
 }

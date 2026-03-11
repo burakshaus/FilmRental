@@ -27,6 +27,8 @@ namespace EntityLayer.Concrete
         public string? Director { get; set; }
         public int? Runtime { get; set; }
         public string? TrailerUrl { get; set; }
+        public string? EmbeddingJson { get; set; } // Gemini text-embedding-004 vektörü (768 boyut, JSON)
+        public int TotalCopies { get; set; } = 3; // DVD kopya sayısı (varsayılan 3)
 
         // İlişkiler
         public ICollection<MovieGenre> MovieGenres { get; set; }
