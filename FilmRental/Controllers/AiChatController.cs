@@ -15,6 +15,17 @@ namespace FilmRental.Controllers
         private readonly Context _context;
         private readonly HttpClient _httpClient;
 
+        // Free models to try in order (if one is rate-limited, try the next)
+        private static readonly string[] FreeModels = new[]
+        {
+            "qwen/qwen3-4b:free",
+            "qwen/qwen3-coder:free",
+            "google/gemma-3-12b-it:free",
+            "meta-llama/llama-3.3-70b-instruct:free",
+            "mistralai/mistral-small-3.1-24b-instruct:free",
+            "google/gemma-3-27b-it:free"
+        };
+
         public AiChatController(IConfiguration configuration, Context context)
         {
             _configuration = configuration;
@@ -28,34 +39,43 @@ namespace FilmRental.Controllers
             if (string.IsNullOrWhiteSpace(request.Message))
                 return BadRequest("Mesaj boş olamaz.");
 
-            var geminiApiKey = _configuration["Gemini:ApiKey"];
-            var groqApiKey = _configuration["Groq:ApiKey"];
-            if (string.IsNullOrEmpty(groqApiKey))
-                return StatusCode(500, "Groq API Key bulunamadı.");
+            var openRouterApiKey = _configuration["OpenRouter:ApiKey"];
+            if (string.IsNullOrEmpty(openRouterApiKey))
+                return StatusCode(500, new { error = "OpenRouter API Key bulunamadı." });
 
-            // ── RAG Step 1: Retrieve relevant movies via semantic search ──
-            var movieContext = await RetrieveSemanticMoviesAsync(geminiApiKey, request.Message);
+            var geminiApiKey = _configuration["Gemini:ApiKey"];
+
+            // ── RAG Step 1: Retrieve relevant movies ──
+            var movieContext = await RetrieveMoviesAsync(geminiApiKey, request.Message);
 
             // ── RAG Step 2: Build augmented prompt ──
             var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
 
-            // ── RAG Step 3: Send to Groq ──
-            try
+            // ── RAG Step 3: Try each free model until one works ──
+            foreach (var model in FreeModels)
             {
-                var reply = await GetGroqResponseAsync(groqApiKey, systemPrompt);
-                return Ok(new { reply });
+                try
+                {
+                    var reply = await GetOpenRouterResponseAsync(openRouterApiKey, model, systemPrompt);
+                    return Ok(new { reply });
+                }
+                catch (RateLimitException)
+                {
+                    continue; // Try next model
+                }
             }
-            catch (Exception ex)
-            {
-                return StatusCode(500, $"Sunucu hatası: {ex.Message}");
-            }
+
+            return StatusCode(503, new { error = "Tüm ücretsiz AI modelleri şu anda meşgul. Lütfen birkaç saniye sonra tekrar deneyin." });
         }
 
-        private async Task<string> GetGroqResponseAsync(string apiKey, string prompt)
+        /// <summary>
+        /// Calls a model via OpenRouter API. OpenAI-compatible format.
+        /// </summary>
+        private async Task<string> GetOpenRouterResponseAsync(string apiKey, string model, string prompt)
         {
             var requestBody = new
             {
-                model = "llama-3.3-70b-versatile",
+                model = model,
                 max_tokens = 1024,
                 messages = new[]
                 {
@@ -63,44 +83,58 @@ namespace FilmRental.Controllers
                 }
             };
 
-            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://api.groq.com/openai/v1/chat/completions");
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://openrouter.ai/api/v1/chat/completions");
             requestMessage.Headers.Add("Authorization", $"Bearer {apiKey}");
+            requestMessage.Headers.Add("HTTP-Referer", "http://localhost:5295");
+            requestMessage.Headers.Add("X-Title", "FilmRental");
             requestMessage.Content = new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json");
 
             var response = await _httpClient.SendAsync(requestMessage);
             var responseString = await response.Content.ReadAsStringAsync();
 
+            if ((int)response.StatusCode == 429 || responseString.Contains("rate-limited"))
+                throw new RateLimitException();
+
             if (!response.IsSuccessStatusCode)
-                throw new Exception($"Groq API Hatası: {responseString}");
+                throw new Exception($"AI API Hatası ({model}): {responseString}");
 
             using var jsonDoc = JsonDocument.Parse(responseString);
             var root = jsonDoc.RootElement;
 
             if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
             {
-                return choices[0]
+                var content = choices[0]
                     .GetProperty("message")
                     .GetProperty("content")
                     .GetString() ?? "";
+                
+                // Some models wrap responses in <think> tags, strip them
+                var thinkEnd = content.IndexOf("</think>");
+                if (thinkEnd >= 0)
+                    content = content[(thinkEnd + 8)..].Trim();
+
+                return content;
             }
 
-            throw new Exception("Groq API yanıtı beklenmeyen bir formattaydı.");
+            throw new Exception("API yanıtı beklenmeyen bir formattaydı.");
         }
 
         /// <summary>
-        /// Semantic retrieval: gets query embedding and finds top-N movies by cosine similarity.
-        /// Falls back to keyword matching if no embeddings exist yet.
+        /// Retrieves relevant movies using keyword matching and optional semantic search.
         /// </summary>
-        private async Task<List<MovieContextItem>> RetrieveSemanticMoviesAsync(string apiKey, string query)
+        private async Task<List<MovieContextItem>> RetrieveMoviesAsync(string? geminiApiKey, string query)
         {
-            var queryEmbedding = await GetEmbeddingAsync(apiKey, query);
+            float[]? queryEmbedding = null;
+            if (!string.IsNullOrEmpty(geminiApiKey) && geminiApiKey != "(user-secrets ile ayarlanacak)")
+            {
+                queryEmbedding = await GetEmbeddingAsync(geminiApiKey, query);
+            }
 
             var allMovies = await _context.Movies
                 .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
                 .Include(m => m.MovieActors).ThenInclude(ma => ma.Actor)
                 .ToListAsync();
 
-            // ── Stock filter: exclude movies with no available copies ──
             var activeRentalCounts = await _context.Rentals
                 .Where(r => r.ReturnedAt == null)
                 .GroupBy(r => r.MovieId)
@@ -116,9 +150,8 @@ namespace FilmRental.Controllers
                 .ToList();
 
             if (!availableMovies.Any())
-                availableMovies = allMovies; // fallback: show all if everything is rented
+                availableMovies = allMovies;
 
-            // If embeddings exist, use cosine similarity on available movies only
             var withEmbeddings = availableMovies.Where(m => m.EmbeddingJson != null).ToList();
             if (queryEmbedding != null && withEmbeddings.Count > 5)
             {
@@ -138,7 +171,6 @@ namespace FilmRental.Controllers
                     .ToList();
             }
 
-            // Fallback: keyword matching
             var keywords = query.ToLower()
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries)
                 .Where(w => w.Length >= 3).ToList();
@@ -173,9 +205,6 @@ namespace FilmRental.Controllers
                 .ToList();
         }
 
-        /// <summary>
-        /// Calls Gemini text-embedding-004 to get a 768-dim vector for any text.
-        /// </summary>
         private async Task<float[]?> GetEmbeddingAsync(string apiKey, string text)
         {
             var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
@@ -201,7 +230,6 @@ namespace FilmRental.Controllers
             return null;
         }
 
-        /// <summary>Calculates cosine similarity between two float vectors.</summary>
         private static double CosineSimilarity(float[] a, float[] b)
         {
             if (a.Length != b.Length) return 0;
@@ -227,7 +255,6 @@ namespace FilmRental.Controllers
             AvailableCopies = availableCopies
         };
 
-        /// <summary>Builds the full augmented RAG prompt with database context.</summary>
         private static string BuildAugmentedPrompt(string userQuery, List<MovieContextItem> movies)
         {
             var sb = new StringBuilder();
@@ -257,6 +284,9 @@ namespace FilmRental.Controllers
             return sb.ToString();
         }
     }
+
+    /// <summary>Custom exception for rate limiting to trigger model fallback.</summary>
+    public class RateLimitException : Exception { }
 
     public class MovieContextItem
     {
