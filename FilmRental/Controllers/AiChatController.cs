@@ -1,9 +1,11 @@
+using BusinessLayer.Abstract;
 using DataAccessLayer.Concrete;
 using FilmRental.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace FilmRental.Controllers
 {
@@ -14,23 +16,26 @@ namespace FilmRental.Controllers
         private readonly IConfiguration _configuration;
         private readonly Context _context;
         private readonly HttpClient _httpClient;
+        private readonly ITmdbService _tmdbService;
 
-        // Free models to try in order (if one is rate-limited, try the next)
+        // Ücretsiz test için sırayla denenecek farklı yapay zeka modelleri (OpenRouter üzerinden)
         private static readonly string[] FreeModels = new[]
         {
-            "qwen/qwen3-4b:free",
-            "qwen/qwen3-coder:free",
-            "google/gemma-3-12b-it:free",
-            "meta-llama/llama-3.3-70b-instruct:free",
             "mistralai/mistral-small-3.1-24b-instruct:free",
-            "google/gemma-3-27b-it:free"
+            "google/gemma-3-12b-it:free",
+            "google/gemma-3-27b-it:free",
+            "qwen/qwen-2.5-72b-instruct",
+            "qwen/qwen-2.5-7b-instruct",
+            "qwen/qwen-2.5-coder-32b-instruct",
+            "meta-llama/llama-3.3-70b-instruct:free"
         };
 
-        public AiChatController(IConfiguration configuration, Context context)
+        public AiChatController(IConfiguration configuration, Context context, ITmdbService tmdbService)
         {
             _configuration = configuration;
             _context = context;
             _httpClient = new HttpClient();
+            _tmdbService = tmdbService;
         }
 
         [HttpPost]
@@ -41,36 +46,85 @@ namespace FilmRental.Controllers
 
             var openRouterApiKey = _configuration["OpenRouter:ApiKey"];
             if (string.IsNullOrEmpty(openRouterApiKey))
-                return StatusCode(500, new { error = "OpenRouter API Key bulunamadı." });
+                return StatusCode(500, new { error = "OpenRouter API Key bulunamadı. Lütfen terminalden ayarlayın." });
 
             var geminiApiKey = _configuration["Gemini:ApiKey"];
+            var tmdbApiKey = _configuration["TMDB:ApiKey"];
 
-            // ── RAG Step 1: Retrieve relevant movies ──
-            var movieContext = await RetrieveMoviesAsync(geminiApiKey, request.Message);
-
-            // ── RAG Step 2: Build augmented prompt ──
-            var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
-
-            // ── RAG Step 3: Try each free model until one works ──
-            foreach (var model in FreeModels)
+            int maxAttempts = 5; // Daha da fazla deneme
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                try
+                // ── RAG Step 1: İlgili filmleri çek ──
+                var movieContext = await RetrieveMoviesAsync(geminiApiKey, request.Message);
+                Console.WriteLine($"[DEBUG] Contextual movies found in DB (Attempt {attempt}): {movieContext.Count}");
+                foreach(var m in movieContext) 
+                    Console.WriteLine($"   - {m.Title} (Rating: {m.Rating}, Stok: {m.AvailableCopies})");
+
+                // ── RAG Step 2: Prompt oluştur ──
+                var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
+
+                string aiResponse = null;
+
+                // ── RAG Step 3: Modelleri sırayla dene ──
+                foreach (var model in FreeModels)
                 {
-                    var reply = await GetOpenRouterResponseAsync(openRouterApiKey, model, systemPrompt);
-                    return Ok(new { reply });
+                    try
+                    {
+                        var reply = await GetOpenRouterResponseAsync(openRouterApiKey, model, systemPrompt);
+                        aiResponse = reply;
+                        break;
+                    }
+                    catch (RateLimitException) 
+                    {
+                        Console.WriteLine($"[WARN] Model {model} is rate limited. Trying next one...");
+                        continue; 
+                    }
+                    catch (Exception ex) 
+                    {
+                        Console.WriteLine($"[ERROR] Model {model} failed: {ex.Message}. Trying next one...");
+                        continue; 
+                    }
                 }
-                catch (RateLimitException)
+
+                if (aiResponse == null)
+                    return StatusCode(503, new { error = "Tüm ücretsiz AI modelleri şu anda çok yoğun (Meşgul). Lütfen 1-2 dakika bekleyip tekrar sorunuz." });
+
+                // ── [TMDB_SEARCH: ] KONTROLÜ (AJAN MANTIĞI) ──
+                Console.WriteLine($"[DEBUG] AI Response (Attempt {attempt}): {aiResponse}");
+
+                if (aiResponse.Contains("[TMDB_SEARCH:"))
                 {
-                    continue; // Try next model
+                    var startIndex = aiResponse.IndexOf("[TMDB_SEARCH:") + 13;
+                    var endIndex = aiResponse.IndexOf("]", startIndex);
+                    if (endIndex > startIndex)
+                    {
+                        var movieToSearch = aiResponse.Substring(startIndex, endIndex - startIndex).Trim();
+                        Console.WriteLine($"[DEBUG] Triggering TMDB Fetch for: '{movieToSearch}'");
+                        
+                        // TMDB'de ara ve DB'ye ekle
+                        if (!string.IsNullOrEmpty(tmdbApiKey))
+                        {
+                            var added = await _tmdbService.SearchAndAddMovieAsync(movieToSearch, tmdbApiKey);
+                            Console.WriteLine($"[DEBUG] TmdbService.SearchAndAddMovieAsync returned: {added}");
+                            if (added && attempt < maxAttempts)
+                            {
+                                Console.WriteLine($"[DEBUG] Movie processed. Re-prompting AI with new database context...");
+                                // Film veritabanına eklendi veya zaten vardı. Döngü başa dönecek ve AI yeni listeyle tekrar çağrılacak!
+                                continue; 
+                            }
+                        }
+                    }
+
+                    return Ok(new { reply = "Üzgünüm, aradığınız filmi dünyada (TMDB) bulamadım veya servislerimiz şu anda yanıt vermiyor." });
                 }
+
+                // Normal AI Yanıtıysa dön
+                return Ok(new { reply = aiResponse });
             }
 
-            return StatusCode(503, new { error = "Tüm ücretsiz AI modelleri şu anda meşgul. Lütfen birkaç saniye sonra tekrar deneyin." });
+            return StatusCode(500, new { error = "Yapay zeka yanıt oluşturamadı." });
         }
 
-        /// <summary>
-        /// Calls a model via OpenRouter API. OpenAI-compatible format.
-        /// </summary>
         private async Task<string> GetOpenRouterResponseAsync(string apiKey, string model, string prompt)
         {
             var requestBody = new
@@ -92,11 +146,13 @@ namespace FilmRental.Controllers
             var response = await _httpClient.SendAsync(requestMessage);
             var responseString = await response.Content.ReadAsStringAsync();
 
-            if ((int)response.StatusCode == 429 || responseString.Contains("rate-limited"))
-                throw new RateLimitException();
-
             if (!response.IsSuccessStatusCode)
-                throw new Exception($"AI API Hatası ({model}): {responseString}");
+            {
+                if ((int)response.StatusCode == 429 || responseString.Contains("rate") || responseString.Contains("limit") || responseString.Contains("Too Many Requests"))
+                    throw new RateLimitException();
+                
+                throw new Exception($"HTTP {response.StatusCode}: {responseString}");
+            }
 
             using var jsonDoc = JsonDocument.Parse(responseString);
             var root = jsonDoc.RootElement;
@@ -108,7 +164,6 @@ namespace FilmRental.Controllers
                     .GetProperty("content")
                     .GetString() ?? "";
                 
-                // Some models wrap responses in <think> tags, strip them
                 var thinkEnd = content.IndexOf("</think>");
                 if (thinkEnd >= 0)
                     content = content[(thinkEnd + 8)..].Trim();
@@ -119,17 +174,8 @@ namespace FilmRental.Controllers
             throw new Exception("API yanıtı beklenmeyen bir formattaydı.");
         }
 
-        /// <summary>
-        /// Retrieves relevant movies using keyword matching and optional semantic search.
-        /// </summary>
         private async Task<List<MovieContextItem>> RetrieveMoviesAsync(string? geminiApiKey, string query)
         {
-            float[]? queryEmbedding = null;
-            if (!string.IsNullOrEmpty(geminiApiKey) && geminiApiKey != "(user-secrets ile ayarlanacak)")
-            {
-                queryEmbedding = await GetEmbeddingAsync(geminiApiKey, query);
-            }
-
             var allMovies = await _context.Movies
                 .Include(m => m.MovieGenres).ThenInclude(mg => mg.Genre)
                 .Include(m => m.MovieActors).ThenInclude(ma => ma.Actor)
@@ -141,93 +187,84 @@ namespace FilmRental.Controllers
                 .Select(g => new { MovieId = g.Key, Count = g.Count() })
                 .ToDictionaryAsync(x => x.MovieId, x => x.Count);
 
-            var availableMovies = allMovies
-                .Where(m =>
-                {
-                    var rented = activeRentalCounts.GetValueOrDefault(m.Id, 0);
-                    return m.TotalCopies - rented > 0;
-                })
-                .ToList();
+            // More robust Turkish handling
+            string norm(string s) => s.Replace("İ", "i").Replace("I", "ı").Replace("ş", "s").Replace("Ş", "s").Replace("ğ", "g").Replace("Ğ", "g").Replace("ü", "u").Replace("Ü", "u").Replace("ö", "o").Replace("Ö", "o").Replace("ç", "c").Replace("Ç", "c").ToLower();
+            
+            var queryLower = norm(query);
+            var keywords = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => w.Length >= 3).ToList();
 
-            if (!availableMovies.Any())
-                availableMovies = allMovies;
-
-            var withEmbeddings = availableMovies.Where(m => m.EmbeddingJson != null).ToList();
-            if (queryEmbedding != null && withEmbeddings.Count > 5)
-            {
-                return withEmbeddings
-                    .Select(m =>
-                    {
-                        var vec = JsonSerializer.Deserialize<float[]>(m.EmbeddingJson!)!;
-                        return new { Movie = m, Score = CosineSimilarity(queryEmbedding, vec) };
-                    })
-                    .OrderByDescending(x => x.Score)
-                    .Take(8)
-                    .Select(x =>
-                    {
-                        var available = x.Movie.TotalCopies - activeRentalCounts.GetValueOrDefault(x.Movie.Id, 0);
-                        return ToContextItem(x.Movie, available);
-                    })
-                    .ToList();
-            }
-
-            var keywords = query.ToLower()
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Where(w => w.Length >= 3).ToList();
-
-            var keywordScored = availableMovies
+            var scored = allMovies
                 .Select(m =>
                 {
-                    var text = $"{m.Title} {m.Overview} {string.Join(" ", m.MovieGenres.Select(mg => mg.Genre.Name))}".ToLower();
-                    var score = keywords.Sum(kw => text.Contains(kw) ? 1 : 0) + (m.ImdbRating ?? 0) / 10.0;
-                    return new { Movie = m, Score = score };
+                    double score = 0;
+                    var titleNorm = norm(m.Title);
+                    
+                    // Exact or Partial Title Match (HUGE BOOST)
+                    if (titleNorm == queryLower) score += 500;
+                    else if (titleNorm.Contains(queryLower) || queryLower.Contains(titleNorm)) score += 200;
+
+                    // Keyword matches
+                    foreach(var kw in keywords) {
+                        if (titleNorm.Contains(kw)) score += 50;
+                    }
+
+                    // Stock check - include everything, but slightly favor in-stock
+                    var rented = activeRentalCounts.GetValueOrDefault(m.Id, 0);
+                    var stock = m.TotalCopies - rented;
+                    if (stock > 0) score += 5;
+
+                    score += (m.ImdbRating ?? 0) / 10.0;
+                    
+                    return new { Movie = m, Score = score, Stock = stock };
                 })
                 .Where(x => x.Score > 0)
                 .OrderByDescending(x => x.Score)
-                .Take(8)
-                .Select(x =>
-                {
-                    var available = x.Movie.TotalCopies - activeRentalCounts.GetValueOrDefault(x.Movie.Id, 0);
-                    return ToContextItem(x.Movie, available);
-                })
+                .Take(25)
+                .Select(x => ToContextItem(x.Movie, x.Stock))
                 .ToList();
 
-            if (keywordScored.Any()) return keywordScored;
+            if (scored.Count < 5)
+            {
+                // Fallback to top rated if search didn't yield much
+                var fallback = allMovies
+                    .OrderByDescending(m => m.ImdbRating)
+                    .Take(25)
+                    .Select(m => ToContextItem(m, m.TotalCopies - activeRentalCounts.GetValueOrDefault(m.Id, 0)))
+                    .ToList();
+                
+                foreach(var f in fallback) if(!scored.Any(s => s.Title == f.Title)) scored.Add(f);
+            }
 
-            return availableMovies
-                .OrderByDescending(m => m.ImdbRating)
-                .Take(8)
-                .Select(m =>
-                {
-                    var available = m.TotalCopies - activeRentalCounts.GetValueOrDefault(m.Id, 0);
-                    return ToContextItem(m, available);
-                })
-                .ToList();
+            return scored.Take(25).ToList();
         }
 
         private async Task<float[]?> GetEmbeddingAsync(string apiKey, string text)
         {
-            var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
-            var body = new
+            try
             {
-                model = "models/gemini-embedding-001",
-                content = new { parts = new[] { new { text } } }
-            };
+                var url = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={apiKey}";
+                var body = new
+                {
+                    model = "models/gemini-embedding-001",
+                    content = new { parts = new[] { new { text } } }
+                };
 
-            var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-            var response = await _httpClient.PostAsync(url, content);
-            if (!response.IsSuccessStatusCode) return null;
+                var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(url, content);
+                if (!response.IsSuccessStatusCode) return null;
 
-            var json = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
+                var json = await response.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(json);
 
-            if (doc.RootElement.TryGetProperty("embedding", out var embEl) &&
-                embEl.TryGetProperty("values", out var values))
-            {
-                return values.EnumerateArray().Select(v => (float)v.GetDouble()).ToArray();
-            }
+                if (doc.RootElement.TryGetProperty("embedding", out var embEl) &&
+                    embEl.TryGetProperty("values", out var values))
+                {
+                    return values.EnumerateArray().Select(v => (float)v.GetDouble()).ToArray();
+                }
 
-            return null;
+                return null;
+            } 
+            catch { return null; }
         }
 
         private static double CosineSimilarity(float[] a, float[] b)
@@ -258,34 +295,38 @@ namespace FilmRental.Controllers
         private static string BuildAugmentedPrompt(string userQuery, List<MovieContextItem> movies)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Sen bir DVD kiralama mağazasının yapay zeka asistanısın.");
-            sb.AppendLine("Görevin: Aşağıdaki VERİTABANINDAN çekilen film listesine dayanarak kullanıcının sorusunu yanıtlamak.");
-            sb.AppendLine();
-            sb.AppendLine("KURALLAR:");
-            sb.AppendLine("1. Yalnızca aşağıdaki veritabanı filmlerinden öneri yap.");
-            sb.AppendLine("2. Her öneride neden o filmi seçtiğini kısa bir cümleyle açıkla.");
-            sb.AppendLine("3. Cevabını emoji'lerle güzelleştir, kısa ve anlaşılır tut.");
-            sb.AppendLine("4. Veritabanında uygun film yoksa bunu dürüstçe belirt.");
-            sb.AppendLine();
-            sb.AppendLine("── VERİTABANINDAKİ İLGİLİ FİLMLER ──");
+            sb.AppendLine("### VERİTABANIMIZDAKİ MEVCUT FİLM LİSTESİ ###");
 
-            for (int i = 0; i < movies.Count; i++)
+            if (movies.Count == 0)
             {
-                var m = movies[i];
-                var stockInfo = m.AvailableCopies >= 0 ? $" | Stok: {m.AvailableCopies} kopya" : "";
-                sb.AppendLine($"{i + 1}. {m.Title} ({m.Year}) | IMDb: {m.Rating:0.0} | Tür: {string.Join(", ", m.Genres)}{stockInfo}");
-                sb.AppendLine($"   Oyuncular: {string.Join(", ", m.Actors)}");
-                sb.AppendLine($"   Özet: {(m.Overview.Length > 200 ? m.Overview[..200] + "..." : m.Overview)}");
+                sb.AppendLine("- (Şu an dükkanda hiç film bulunamadı)");
+            }
+            else
+            {
+                foreach (var m in movies)
+                {
+                    var stockInfo = m.AvailableCopies >= 0 ? $" | Stok: {m.AvailableCopies} kopya" : "";
+                    sb.AppendLine($"- {m.Title} ({m.Year}) | IMDb: {m.Rating:0.0} | Tür: {string.Join(", ", m.Genres)}{stockInfo}");
+                    sb.AppendLine($"  Özet: {m.Overview}");
+                }
             }
 
             sb.AppendLine();
-            sb.AppendLine("── KULLANICI SORUSU ──");
-            sb.AppendLine(userQuery);
+            sb.AppendLine($"### KULLANICI SORUSU: {userQuery} ###");
+            sb.AppendLine();
+            sb.AppendLine("### ÖNEMLİ TALİMATLAR (KESİNLİKLE UY!) ###");
+            sb.AppendLine("1. SADECE yukarıdaki listede olan filmleri önerebilirsin.");
+            sb.AppendLine("2. Eğer kullanıcı KESİN BİR FİLM ADI (Örn: 'Recep İvedik', 'Yüzüklerin Efendisi') soruyorsa ve bu film yukarıdaki listede TAM OLARAK YOKSA:");
+            sb.AppendLine("   - ASLA açıklama yapma, üzgünüm deme, başka bir şey önerme.");
+            sb.AppendLine("   - Sadece şunu yaz: [TMDB_SEARCH: Film Adı]");
+            sb.AppendLine("   - Örnek: [TMDB_SEARCH: Titanic]");
+            sb.AppendLine("3. Eğer kullanıcı genel bir şey sorduysa ve uygun film yoksa, o türde ünlü bir film için yine sadece [TMDB_SEARCH: ...] komutunu kullan.");
+            sb.AppendLine("4. Eğer listede olan ama 'Stok: 0 kopya' yazan bir filmi (özellikle yeni eklediğimiz filmi) söylüyorsan, kullanıcıya sadece 'Bu film dükkanımızda var ancak şu an stokta bulunmuyor.' de.");
+
             return sb.ToString();
         }
     }
 
-    /// <summary>Custom exception for rate limiting to trigger model fallback.</summary>
     public class RateLimitException : Exception { }
 
     public class MovieContextItem

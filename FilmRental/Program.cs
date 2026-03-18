@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 // TODO: Context hangi namespace'deyse bunu düzelt:
 // Örn: using DataAccessLayer.Concrete;  veya using EntityLayer.Concrete;
 using DataAccessLayer.Concrete;
+using BusinessLayer.Abstract;
+using BusinessLayer.Concrete;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +24,9 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 // ? DbContext (SQL Server)
 builder.Services.AddDbContext<Context>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// TMDB Service (Agent AI)
+builder.Services.AddScoped<ITmdbService, TmdbService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
