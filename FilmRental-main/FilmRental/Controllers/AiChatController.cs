@@ -37,7 +37,7 @@ namespace FilmRental.Controllers
             var movieContext = await RetrieveSemanticMoviesAsync(openRouterApiKey, request.Message);
 
             // ── RAG Step 2: Build augmented prompt ──
-            var systemPrompt = BuildAugmentedPrompt(request.Message, movieContext);
+            var systemPrompt = BuildSystemPrompt(movieContext);
 
             // ── RAG Step 3: Send to OpenRouter (Qwen Model) Chat ──
             string url = "https://openrouter.ai/api/v1/chat/completions";
@@ -45,9 +45,12 @@ namespace FilmRental.Controllers
             var requestBody = new
             {
                 model = "qwen/qwen-2.5-72b-instruct",
+                temperature = 0.2, // Çok düşük yaratıcılık (halüsinasyonu keser)
+                top_p = 0.85,
                 messages = new[]
                 {
-                    new { role = "user", content = systemPrompt }
+                    new { role = "system", content = systemPrompt },
+                    new { role = "user", content = request.Message }
                 }
             };
 
@@ -237,8 +240,8 @@ namespace FilmRental.Controllers
             AvailableCopies = availableCopies
         };
 
-        /// <summary>Builds the full augmented RAG prompt with database context.</summary>
-        private static string BuildAugmentedPrompt(string userQuery, List<MovieContextItem> movies)
+        /// <summary>Builds the system prompt with database context.</summary>
+        private static string BuildSystemPrompt(List<MovieContextItem> movies)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Sen bir DVD kiralama mağazasının samimi ve bilgili yapay zeka asistanısın.");
@@ -249,6 +252,7 @@ namespace FilmRental.Controllers
             sb.AppendLine("2. Eğer kullanıcı film önerisi istiyorsa SADECE aşağıdaki veritabanı listesindeki filmlerden öneri yap.");
             sb.AppendLine("3. Kullanıcının sorduğu film aşağıdaki veritabanı listesinde YOKSA, o film hakkında bilgileri ver fakat 'Maalesef bu film şu an arşivimizde bulunmuyor, ancak yerine şu filmleri önerebilirim:' diyerek eldeki benzer filmleri öner.");
             sb.AppendLine("4. Cevaplarını emoji'lerle güzelleştir, kısa, kibar ve anlaşılır tut.");
+            sb.AppendLine("5. KESİNLİKLE VE SADECE TÜRKÇE (Turkish) dilinde cevap ver. İngilizce veya farklı diller kullanma.");
             sb.AppendLine();
             sb.AppendLine("── STOKTAKİ İLGİLİ FİLMLER (VERİTABANI) ──");
 
@@ -261,9 +265,6 @@ namespace FilmRental.Controllers
                 sb.AppendLine($"   Özet: {(m.Overview.Length > 200 ? m.Overview[..200] + "..." : m.Overview)}");
             }
 
-            sb.AppendLine();
-            sb.AppendLine("── KULLANICI SORUSU ──");
-            sb.AppendLine(userQuery);
             return sb.ToString();
         }
     }
