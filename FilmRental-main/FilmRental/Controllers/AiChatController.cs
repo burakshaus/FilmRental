@@ -241,16 +241,16 @@ namespace FilmRental.Controllers
         private static string BuildAugmentedPrompt(string userQuery, List<MovieContextItem> movies)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Sen bir DVD kiralama mağazasının yapay zeka asistanısın.");
-            sb.AppendLine("Görevin: Aşağıdaki VERİTABANINDAN çekilen film listesine dayanarak kullanıcının sorusunu yanıtlamak.");
+            sb.AppendLine("Sen bir DVD kiralama mağazasının samimi ve bilgili yapay zeka asistanısın.");
+            sb.AppendLine("Görevin: Kullanıcının sinema ile ilgili her türlü sorusunu kendi bilgi birikimini kullanarak detaylıca cevaplamak, ANCAK film kiralama/önerme durumunda SADECE aşağıdaki stoktaki filmleri sunmaktır.");
             sb.AppendLine();
             sb.AppendLine("KURALLAR:");
-            sb.AppendLine("1. Yalnızca aşağıdaki veritabanı filmlerinden öneri yap.");
-            sb.AppendLine("2. Her öneride neden o filmi seçtiğini kısa bir cümleyle açıkla.");
-            sb.AppendLine("3. Cevabını emoji'lerle güzelleştir, kısa ve anlaşılır tut.");
-            sb.AppendLine("4. Veritabanında uygun film yoksa bunu dürüstçe belirt.");
+            sb.AppendLine("1. Kullanıcı bilinen herhangi bir film, dizi veya yönetmen hakkında soru sorarsa buna özgürce kendi bilgilerinle cevap ver.");
+            sb.AppendLine("2. Eğer kullanıcı film önerisi istiyorsa SADECE aşağıdaki veritabanı listesindeki filmlerden öneri yap.");
+            sb.AppendLine("3. Kullanıcının sorduğu film aşağıdaki veritabanı listesinde YOKSA, o film hakkında bilgileri ver fakat 'Maalesef bu film şu an arşivimizde bulunmuyor, ancak yerine şu filmleri önerebilirim:' diyerek eldeki benzer filmleri öner.");
+            sb.AppendLine("4. Cevaplarını emoji'lerle güzelleştir, kısa, kibar ve anlaşılır tut.");
             sb.AppendLine();
-            sb.AppendLine("── VERİTABANINDAKİ İLGİLİ FİLMLER ──");
+            sb.AppendLine("── STOKTAKİ İLGİLİ FİLMLER (VERİTABANI) ──");
 
             for (int i = 0; i < movies.Count; i++)
             {
