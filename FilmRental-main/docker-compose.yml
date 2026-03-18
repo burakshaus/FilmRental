@@ -1,0 +1,29 @@
+services:
+  db:
+    image: mcr.microsoft.com/azure-sql-edge
+    container_name: film-rental-db
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=S1stemAdmin2024!
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./Database/FilmRentalDb.mdf:/var/opt/mssql/data/FilmRentalDb.mdf
+      - ./Database/FilmRentalDb_log.ldf:/var/opt/mssql/data/FilmRentalDb_log.ldf
+      - ./Database/attach-db.sql:/var/opt/mssql/data/attach-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"S1stemAdmin2024!\" -Q \"SELECT 1\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db-init:
+    image: mcr.microsoft.com/azure-sql-edge
+    container_name: film-rental-db-init
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./Database/attach-db.sql:/var/opt/mssql/data/attach-db.sql
+    command: >
+      /opt/mssql-tools/bin/sqlcmd -S db -U sa -P "S1stemAdmin2024!" -i /var/opt/mssql/data/attach-db.sql

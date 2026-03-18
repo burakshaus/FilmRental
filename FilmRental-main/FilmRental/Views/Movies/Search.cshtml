@@ -1,0 +1,62 @@
+@model List<EntityLayer.Concrete.Movie>
+@{
+    ViewData["Title"] = "Arama Sonuçları";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold mb-2">Arama Sonuçları</h1>
+    <p class="text-gray-400">"<span class="text-indigo-400 font-semibold">@ViewBag.SearchQuery</span>" için @Model.Count film bulundu.</p>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="bg-gray-800 rounded-xl p-8 text-center border border-gray-700">
+        <svg class="mx-auto h-16 w-16 text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h3 class="text-xl font-medium text-white mb-2">Film Bulunamadı</h3>
+        <p class="text-gray-400">Aradığınız kritere uygun bir film bulamadık. Lütfen farklı bir isimle tekrar deneyin.</p>
+        <a href="/Movies" class="mt-6 inline-block bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition">Tüm Filmleri Gör</a>
+    </div>
+}
+else
+{
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+        @foreach (var item in Model)
+        {
+            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition duration-300 transform hover:-translate-y-1">
+                <a href="/Movies/Details/@item.Id">
+                    <div class="relative h-80 w-full bg-gray-700">
+                        @if (!string.IsNullOrEmpty(item.PosterPath))
+                        {
+                            var imgUrl = item.PosterPath.StartsWith("http") ? item.PosterPath : "https://image.tmdb.org/t/p/w500" + item.PosterPath;
+                            <img src="@imgUrl" alt="@item.Title" class="w-full h-full object-cover">
+                        }
+                        else
+                        {
+                            <div class="w-full h-full flex flex-col items-center justify-center text-gray-500">
+                                <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                <span>Görsel Yok</span>
+                            </div>
+                        }
+                        <div class="absolute top-2 right-2 bg-black bg-opacity-70 text-yellow-400 px-2 py-1 rounded text-sm font-bold flex items-center shadow">
+                            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                            @(item.ImdbRating.HasValue ? item.ImdbRating.Value.ToString("0.0") : "N/A")
+                        </div>
+                    </div>
+                </a>
+                
+                <div class="p-4">
+                    <h2 class="text-lg font-bold text-white mb-1 truncate" title="@item.Title">
+                        <a href="/Movies/Details/@item.Id" class="hover:text-indigo-400 transition">@item.Title</a>
+                    </h2>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-sm text-gray-400">@(item.ReleaseDate?.Year.ToString() ?? "-")</span>
+                        <a href="/Movies/Details/@item.Id" class="text-sm text-indigo-400 hover:text-indigo-300 font-medium">Detaylar &rarr;</a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

@@ -1,0 +1,115 @@
+@model List<FilmRental.Controllers.MovieStockViewModel>
+@{
+    ViewData["Title"] = "Kiralama Yönetimi";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var activeRentals = ViewBag.ActiveRentals as List<EntityLayer.Concrete.Rental> ?? new();
+}
+
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-white flex items-center gap-3">
+        🎬 Kiralama Yönetimi
+    </h1>
+    <p class="text-gray-400 mt-1">DVD stok durumunu ve aktif kiralamaları buradan yönetin.</p>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="mb-4 bg-green-800 border border-green-600 text-green-100 px-4 py-3 rounded-lg">✅ @TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="mb-4 bg-red-800 border border-red-600 text-red-100 px-4 py-3 rounded-lg">❌ @TempData["Error"]</div>
+}
+
+<!-- Aktif Kiralamalar -->
+@if (activeRentals.Any())
+{
+    <div class="mb-8 bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-700">
+            <h2 class="text-lg font-semibold text-white">📋 Aktif Kiralamalar (@activeRentals.Count)</h2>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-700 text-gray-300 uppercase text-xs">
+                    <tr>
+                        <th class="px-4 py-3 text-left">Film</th>
+                        <th class="px-4 py-3 text-left">Müşteri</th>
+                        <th class="px-4 py-3 text-left">Kiralanma Tarihi</th>
+                        <th class="px-4 py-3 text-left">İşlem</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-700">
+                    @foreach (var rental in activeRentals)
+                    {
+                        <tr class="text-gray-300 hover:bg-gray-750">
+                            <td class="px-4 py-3 font-medium text-white">@rental.Movie?.Title</td>
+                            <td class="px-4 py-3">@rental.CustomerName</td>
+                            <td class="px-4 py-3">@rental.RentedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                            <td class="px-4 py-3">
+                                <form action="/Rental/Return/@rental.Id" method="post">
+                                    <button type="submit" class="bg-yellow-600 hover:bg-yellow-500 text-white text-xs px-3 py-1 rounded transition">
+                                        ↩️ İade Al
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- Film Stok Tablosu + Kiralama Formu -->
+<div class="bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-700">
+        <h2 class="text-lg font-semibold text-white">📦 Film Stokları</h2>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-700 text-gray-300 uppercase text-xs">
+                <tr>
+                    <th class="px-4 py-3 text-left">Film</th>
+                    <th class="px-4 py-3 text-center">Toplam</th>
+                    <th class="px-4 py-3 text-center">Kirada</th>
+                    <th class="px-4 py-3 text-center">Mevcut</th>
+                    <th class="px-4 py-3 text-left">Kirala</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-700">
+                @foreach (var item in Model)
+                {
+                    var badgeColor = item.AvailableCopies == 0 ? "bg-red-900 text-red-300" : "bg-green-900 text-green-300";
+                    <tr class="text-gray-300 hover:bg-gray-750">
+                        <td class="px-4 py-3 font-medium text-white">@item.Title</td>
+                        <td class="px-4 py-3 text-center">@item.TotalCopies</td>
+                        <td class="px-4 py-3 text-center text-yellow-400">@item.RentedCopies</td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="@badgeColor px-2 py-1 rounded-full text-xs font-semibold">
+                                @(item.AvailableCopies == 0 ? "Stok Yok" : $"{item.AvailableCopies} kopya")
+                            </span>
+                        </td>
+                        <td class="px-4 py-3">
+                            @if (item.AvailableCopies > 0)
+                            {
+                                <form action="/Rental/Rent" method="post" class="flex gap-2">
+                                    <input type="hidden" name="movieId" value="@item.Id" />
+                                    <input type="text" name="customerName" placeholder="Müşteri adı..."
+                                           class="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white placeholder-gray-400 focus:outline-none focus:border-indigo-500 w-36" required />
+                                    <button type="submit"
+                                            class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1 rounded transition whitespace-nowrap">
+                                        🎬 Kirala
+                                    </button>
+                                </form>
+                            }
+                            else
+                            {
+                                <span class="text-gray-500 text-xs">Mevcut değil</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

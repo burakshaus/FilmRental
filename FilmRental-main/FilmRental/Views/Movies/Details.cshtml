@@ -1,0 +1,196 @@
+﻿
+@{
+    ViewData["Title"] = "Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- Views/Movie/Details.cshtml -->
+@model EntityLayer.Concrete.Movie
+@{
+    ViewData["Title"] = Model.Title;
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mx-auto px-4 py-8">
+    <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Sol Taraf - Poster ve Temel Bilgiler -->
+        <div class="lg:w-1/3">
+            <div class="bg-white rounded-lg overflow-hidden shadow-lg">
+                @if (!string.IsNullOrEmpty(Model.PosterPath))
+                {
+                    <img src="@(Model.PosterPath.StartsWith("http") ? Model.PosterPath : $"https://image.tmdb.org/t/p/w500{Model.PosterPath}")"
+                         alt="@Model.Title"
+                         class="w-full h-auto">
+                }
+                else
+                {
+                    <div class="w-full h-96 bg-gray-200 flex items-center justify-center">
+                        <span class="text-gray-400">Poster Yok</span>
+                    </div>
+                }
+
+                <!-- Film Detayları -->
+                <div class="p-6">
+                    <h1 class="text-3xl font-bold text-gray-800 mb-4">@Model.Title</h1>
+
+                    <div class="space-y-3">
+                        @if (Model.ReleaseDate.HasValue)
+                        {
+                            <div class="flex items-center text-gray-600">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                                <span>@Model.ReleaseDate.Value.ToString("dd MMMM yyyy")</span>
+                            </div>
+                        }
+
+                        @if (Model.Runtime.HasValue && Model.Runtime.Value > 0)
+                        {
+                            <div class="flex items-center text-gray-600">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <span>@Model.Runtime dakika</span>
+                            </div>
+                        }
+
+                        @if (Model.ImdbRating.HasValue)
+                        {
+                            <div class="flex items-center text-gray-600">
+                                <svg class="w-5 h-5 mr-2 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                </svg>
+                                <span>@Model.ImdbRating.Value.ToString("0.0") / 10</span>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(Model.Director))
+                        {
+                            <div class="flex items-center text-gray-600">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                <span>@Model.Director</span>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Türler -->
+                    @if (Model.MovieGenres != null && Model.MovieGenres.Any())
+                    {
+                        <div class="mt-6">
+                            <h3 class="text-lg font-semibold text-gray-800 mb-2">Türler</h3>
+                            <div class="flex flex-wrap gap-2">
+                                @foreach (var movieGenre in Model.MovieGenres)
+                                {
+                                    <a href="/Genre/Movies/@movieGenre.GenreId"
+                                       class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm hover:bg-blue-200 transition">
+                                        @movieGenre.Genre?.Name
+                                    </a>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Sağ Taraf - Detaylı Bilgiler -->
+        <div class="lg:w-2/3">
+            <!-- Özet -->
+            @if (!string.IsNullOrEmpty(Model.Overview))
+            {
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Özet</h2>
+                    <p class="text-gray-600 leading-relaxed">@Model.Overview</p>
+                </div>
+            }
+
+            <!-- Oyuncular -->
+            @if (Model.MovieActors != null && Model.MovieActors.Any())
+            {
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Oyuncular</h2>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        @foreach (var movieActor in Model.MovieActors)
+                        {
+                            <a href="/Actor/Details/@movieActor.ActorId"
+                               class="flex items-center p-3 rounded-lg hover:bg-gray-50 transition">
+                                @if (!string.IsNullOrEmpty(movieActor.Actor?.PhotoUrl))
+                                {
+                                    <img src="@movieActor.Actor.PhotoUrl"
+                                         alt="@movieActor.Actor.Name"
+                                         class="w-16 h-16 rounded-full object-cover">
+                                }
+                                else
+                                {
+                                    <div class="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+                                        <span class="text-gray-400 text-xs">Foto Yok</span>
+                                    </div>
+                                }
+                                <div class="ml-3">
+                                    <h3 class="font-semibold text-gray-800">@movieActor.Actor?.Name</h3>
+                                    <p class="text-sm text-gray-600">@movieActor.Role</p>
+                                </div>
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- Fragman -->
+            @if (!string.IsNullOrEmpty(Model.TrailerUrl))
+            {
+                <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Fragman</h2>
+                    <div class="aspect-w-16 aspect-h-9">
+                        <iframe src="@Model.TrailerUrl"
+                                frameborder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen
+                                class="w-full h-full rounded-lg">
+                        </iframe>
+                    </div>
+                </div>
+            }
+
+            <!-- Yorumlar -->
+            @if (Model.Reviews != null && Model.Reviews.Any())
+            {
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">Yorumlar</h2>
+                    <div class="space-y-4">
+                        @foreach (var review in Model.Reviews)
+                        {
+                            <div class="border-b border-gray-200 pb-4">
+                                <div class="flex items-center mb-2">
+                                    <div class="flex items-center">
+                                        @for (int i = 1; i <= 5; i++)
+                                        {
+                                            if (i <= review.Rating)
+                                            {
+                                                <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                                </svg>
+                                            }
+                                            else
+                                            {
+                                                <svg class="w-5 h-5 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                                                </svg>
+                                            }
+                                        }
+                                    </div>
+                                    <span class="ml-2 text-sm text-gray-600">
+                                        @(review.CreatedAt?.ToString("dd.MM.yyyy") ?? "")
+                                    </span>
+                                </div>
+                                <p class="text-gray-600">@review.Comment</p>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
