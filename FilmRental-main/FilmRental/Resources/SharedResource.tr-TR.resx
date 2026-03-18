@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Movies" xml:space="preserve"><value>Filmler</value></data>
+  <data name="Genres" xml:space="preserve"><value>Türler</value></data>
+  <data name="Actors" xml:space="preserve"><value>Aktörler</value></data>
+  <data name="Search" xml:space="preserve"><value>Film adı veya aktör ara...</value></data>
+  <data name="FilterMovies" xml:space="preserve"><value>Filmleri Filtrele</value></data>
+  <data name="Genre" xml:space="preserve"><value>Tür</value></data>
+  <data name="All" xml:space="preserve"><value>Tümü</value></data>
+  <data name="MinRating" xml:space="preserve"><value>Minimum IMDb</value></data>
+  <data name="ReleaseYear" xml:space="preserve"><value>Çıkış Yılı</value></data>
+  <data name="AndLater" xml:space="preserve"><value>ve Sonrası</value></data>
+  <data name="Apply" xml:space="preserve"><value>Uygula</value></data>
+  <data name="NotFound" xml:space="preserve"><value>Film Bulunamadı</value></data>
+  <data name="NotFoundDesc" xml:space="preserve"><value>Aradığınız kritere uygun bir film bulamadık. Lütfen farklı bir isimle tekrar deneyin.</value></data>
+  <data name="SeeAllMovies" xml:space="preserve"><value>Tüm Filmleri Gör</value></data>
+  <data name="Details" xml:space="preserve"><value>Detaylar &amp;rarr;</value></data>
+  <data name="AppTitle" xml:space="preserve"><value>Filmvc</value></data>
+  <data name="SearchResults" xml:space="preserve"><value>Arama Sonuçları</value></data>
+  <data name="FoundParam" xml:space="preserve"><value>{0} için {1} film bulundu.</value></data>
+  <data name="ClearFilters" xml:space="preserve"><value>Filtreleri Temizle</value></data>
+  <data name="Rentals" xml:space="preserve"><value>Kiralamalar</value></data>
+</root>

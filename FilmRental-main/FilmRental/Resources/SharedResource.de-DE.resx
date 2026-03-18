@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="Movies" xml:space="preserve"><value>Filme</value></data>
+  <data name="Genres" xml:space="preserve"><value>Genres</value></data>
+  <data name="Actors" xml:space="preserve"><value>Schauspieler</value></data>
+  <data name="Search" xml:space="preserve"><value>Nach Filmen oder Schauspielern suchen...</value></data>
+  <data name="FilterMovies" xml:space="preserve"><value>Filme Filtern</value></data>
+  <data name="Genre" xml:space="preserve"><value>Genre</value></data>
+  <data name="All" xml:space="preserve"><value>Alle</value></data>
+  <data name="MinRating" xml:space="preserve"><value>Min IMDb Bewertung</value></data>
+  <data name="ReleaseYear" xml:space="preserve"><value>Erscheinungsjahr</value></data>
+  <data name="AndLater" xml:space="preserve"><value>und Später</value></data>
+  <data name="Apply" xml:space="preserve"><value>Anwenden</value></data>
+  <data name="NotFound" xml:space="preserve"><value>Film Nicht Gefunden</value></data>
+  <data name="NotFoundDesc" xml:space="preserve"><value>Wir konnten keinen Film finden, der Ihren Kriterien entspricht. Bitte versuchen Sie es erneut.</value></data>
+  <data name="SeeAllMovies" xml:space="preserve"><value>Alle Filme Ansehen</value></data>
+  <data name="Details" xml:space="preserve"><value>Details &amp;rarr;</value></data>
+  <data name="AppTitle" xml:space="preserve"><value>Filmvc</value></data>
+  <data name="SearchResults" xml:space="preserve"><value>Suchergebnisse</value></data>
+  <data name="FoundParam" xml:space="preserve"><value>{1} Filme für "{0}" gefunden.</value></data>
+  <data name="ClearFilters" xml:space="preserve"><value>Filter Löschen</value></data>
+  <data name="Rentals" xml:space="preserve"><value>Ausleihen</value></data>
+</root>

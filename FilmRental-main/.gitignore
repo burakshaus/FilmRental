@@ -1,0 +1,6 @@
+﻿**/.vs/
+**/bin/
+**/obj/
+*.mdf
+*.ldf
+appsettings.Development.json

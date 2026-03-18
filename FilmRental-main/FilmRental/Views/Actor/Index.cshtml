@@ -1,0 +1,45 @@
+﻿
+@{
+    ViewData["Title"] = "Index";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<!-- Views/Actor/Index.cshtml -->
+@model List<EntityLayer.Concrete.Actor>
+@{
+    ViewData["Title"] = "Aktörler";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-8">Aktörler</h1>
+
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+        @foreach (var item in Model)
+        {
+            <a href="/Actor/Details/@item.Id"
+               class="bg-white rounded-lg overflow-hidden shadow-lg hover:shadow-xl transition duration-300">
+                <div class="aspect-w-2 aspect-h-3">
+                    @if (!string.IsNullOrEmpty(item.PhotoUrl))
+                    {
+                        <img src="@item.PhotoUrl"
+                             alt="@item.Name"
+                             class="w-full h-full object-cover">
+                    }
+                    else
+                    {
+                        <div class="w-full h-full bg-gray-200 flex items-center justify-center">
+                            <span class="text-gray-400">Fotoğraf Yok</span>
+                        </div>
+                    }
+                </div>
+                <div class="p-4">
+                    <h2 class="text-lg font-semibold text-gray-800 mb-2">@item.Name</h2>
+                    <p class="text-gray-600 text-sm">
+                        @(item.MovieActors?.Count ?? 0) Filmde rol aldı
+                    </p>
+                </div>
+            </a>
+        }
+    </div>
+</div>
