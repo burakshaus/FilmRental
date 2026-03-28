@@ -94,24 +94,39 @@ namespace FilmRental.Controllers
 
                 if (aiResponse.Contains("[TMDB_SEARCH:"))
                 {
-                    var startIndex = aiResponse.IndexOf("[TMDB_SEARCH:") + 13;
-                    var endIndex = aiResponse.IndexOf("]", startIndex);
-                    if (endIndex > startIndex)
+                    if (!string.IsNullOrEmpty(tmdbApiKey))
                     {
-                        var movieToSearch = aiResponse.Substring(startIndex, endIndex - startIndex).Trim();
-                        Console.WriteLine($"[DEBUG] Triggering TMDB Fetch for: '{movieToSearch}'");
-                        
-                        // TMDB'de ara ve DB'ye ekle
-                        if (!string.IsNullOrEmpty(tmdbApiKey))
+                        // Tüm [TMDB_SEARCH: ...] etiketlerini bul
+                        var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        var searchText = aiResponse;
+                        while (searchText.Contains("[TMDB_SEARCH:"))
                         {
-                            var added = await _tmdbService.SearchAndAddMovieAsync(movieToSearch, tmdbApiKey);
-                            Console.WriteLine($"[DEBUG] TmdbService.SearchAndAddMovieAsync returned: {added}");
-                            if (added && attempt < maxAttempts)
+                            var startIdx = searchText.IndexOf("[TMDB_SEARCH:") + 13;
+                            var endIdx = searchText.IndexOf("]", startIdx);
+                            if (endIdx > startIdx)
                             {
-                                Console.WriteLine($"[DEBUG] Movie processed. Re-prompting AI with new database context...");
-                                // Film veritabanına eklendi veya zaten vardı. Döngü başa dönecek ve AI yeni listeyle tekrar çağrılacak!
-                                continue; 
+                                searchTerms.Add(searchText.Substring(startIdx, endIdx - startIdx).Trim());
+                                searchText = searchText[(endIdx + 1)..];
                             }
+                            else break;
+                        }
+
+                        // Kullanıcının orijinal sorgusunu da TMDB'de ara (seri filmlerin tamamını bulmak için)
+                        searchTerms.Add(request.Message.Trim());
+
+                        bool anyAdded = false;
+                        foreach (var term in searchTerms)
+                        {
+                            Console.WriteLine($"[DEBUG] Triggering TMDB Fetch for: '{term}'");
+                            var added = await _tmdbService.SearchAndAddMovieAsync(term, tmdbApiKey);
+                            Console.WriteLine($"[DEBUG] TmdbService.SearchAndAddMovieAsync('{term}') returned: {added}");
+                            if (added) anyAdded = true;
+                        }
+
+                        if (anyAdded && attempt < maxAttempts)
+                        {
+                            Console.WriteLine($"[DEBUG] Movies processed. Re-prompting AI with new database context...");
+                            continue;
                         }
                     }
 
@@ -320,6 +335,7 @@ namespace FilmRental.Controllers
             sb.AppendLine("   - ASLA açıklama yapma, üzgünüm deme, başka bir şey önerme.");
             sb.AppendLine("   - Sadece şunu yaz: [TMDB_SEARCH: Film Adı]");
             sb.AppendLine("   - Örnek: [TMDB_SEARCH: Titanic]");
+            sb.AppendLine("   - ÖNEMLİ: Seri filmler için GENEL seri adını kullan, numara EKLEME. Örnek: [TMDB_SEARCH: Recep İvedik] (DOĞRU), [TMDB_SEARCH: Recep İvedik 3] (YANLIŞ)");
             sb.AppendLine("3. Eğer kullanıcı genel bir şey sorduysa ve uygun film yoksa, o türde ünlü bir film için yine sadece [TMDB_SEARCH: ...] komutunu kullan.");
             sb.AppendLine("4. Eğer listede olan ama 'Stok: 0 kopya' yazan bir filmi (özellikle yeni eklediğimiz filmi) söylüyorsan, kullanıcıya sadece 'Bu film dükkanımızda var ancak şu an stokta bulunmuyor.' de.");
 

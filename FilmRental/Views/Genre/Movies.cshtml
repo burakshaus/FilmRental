@@ -1,4 +1,4 @@
-﻿
+
 @{
     ViewData["Title"] = "Movies";
     Layout = "~/Views/Shared/_Layout.cshtml";
@@ -24,18 +24,28 @@
         {
             <div class="bg-white rounded-lg overflow-hidden shadow-lg">
                 <a href="/Movies/Details/@item.Id">
-                    @if (!string.IsNullOrEmpty(item.PosterPath))
-                    {
-                        <img src="@(item.PosterPath.StartsWith("http") ? item.PosterPath : $"https://image.tmdb.org/t/p/w500{item.PosterPath}")"
-                             alt="@item.Title"
-                             class="w-full h-96 object-cover">
-                    }
-                    else
-                    {
-                        <div class="w-full h-96 bg-gray-200 flex items-center justify-center">
-                            <span class="text-gray-400">Görsel Yok</span>
-                        </div>
-                    }
+                    <div class="relative w-full h-96">
+                        @if (!string.IsNullOrEmpty(item.PosterPath))
+                        {
+                            <img src="@(item.PosterPath.StartsWith("http") ? item.PosterPath : $"https://image.tmdb.org/t/p/w500{item.PosterPath}")"
+                                 alt="@item.Title"
+                                 class="w-full h-full object-cover">
+                        }
+                        else
+                        {
+                            <div class="w-full h-full bg-gray-200 flex items-center justify-center">
+                                <span class="text-gray-400">Görsel Yok</span>
+                            </div>
+                        }
+                        
+                        @if (item.TotalCopies == 0)
+                        {
+                            <div class="absolute top-2 right-2 bg-red-600 bg-opacity-90 text-white px-2 py-1 rounded text-xs font-bold shadow-lg flex items-center">
+                                <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Stokta Bulunmuyor
+                            </div>
+                        }
+                    </div>
                     <div class="p-4">
                         <h2 class="text-xl font-bold mb-2 line-clamp-1">@item.Title</h2>
 
